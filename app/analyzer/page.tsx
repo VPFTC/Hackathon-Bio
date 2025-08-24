@@ -1,12 +1,12 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Upload, X, ChevronLeft, ChevronRight, Check, Camera } from "lucide-react"
 import { useRouter } from "next/navigation"
+import axios from "axios"
 
 type BodyPart = "skin" | "nail" | "hair" | "mouth" | "eyes"
 
@@ -19,8 +19,8 @@ export default function HealthAnalyzer() {
     mouth: [],
     eyes: [],
   })
-  const [currentBodyPart, setCurrentBodyPart] = useState<BodyPart>("skin")
   const [completedParts, setCompletedParts] = useState<Set<BodyPart>>(new Set())
+  const [currentBodyPart, setCurrentBodyPart] = useState<BodyPart>("skin")
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
   const bodyParts: BodyPart[] = ["skin", "nail", "hair", "mouth", "eyes"]
@@ -39,37 +39,17 @@ export default function HealthAnalyzer() {
         ...prev,
         [currentBodyPart]: [...prev[currentBodyPart], ...files],
       }))
-
       const newCompleted = new Set(completedParts)
       newCompleted.add(currentBodyPart)
       setCompletedParts(newCompleted)
-
       const currentIndex = bodyParts.indexOf(currentBodyPart)
       const nextPart = bodyParts.find((part, index) => index > currentIndex && !newCompleted.has(part))
-      if (nextPart) {
-        setCurrentBodyPart(nextPart)
-      }
+      if (nextPart) setCurrentBodyPart(nextPart)
     }
   }
 
   const handleCameraCapture = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || [])
-    if (files.length > 0) {
-      setUploadedFiles((prev) => ({
-        ...prev,
-        [currentBodyPart]: [...prev[currentBodyPart], ...files],
-      }))
-
-      const newCompleted = new Set(completedParts)
-      newCompleted.add(currentBodyPart)
-      setCompletedParts(newCompleted)
-
-      const currentIndex = bodyParts.indexOf(currentBodyPart)
-      const nextPart = bodyParts.find((part, index) => index > currentIndex && !newCompleted.has(part))
-      if (nextPart) {
-        setCurrentBodyPart(nextPart)
-      }
-    }
+    handleFileUpload(event) // same behavior for camera
   }
 
   const removeFile = (bodyPart: BodyPart, index: number) => {
@@ -81,15 +61,30 @@ export default function HealthAnalyzer() {
 
   const navigateBodyPart = (direction: "prev" | "next") => {
     const currentIndex = bodyParts.indexOf(currentBodyPart)
-    if (direction === "prev" && currentIndex > 0) {
-      setCurrentBodyPart(bodyParts[currentIndex - 1])
-    } else if (direction === "next" && currentIndex < bodyParts.length - 1) {
-      setCurrentBodyPart(bodyParts[currentIndex + 1])
-    }
+    if (direction === "prev" && currentIndex > 0) setCurrentBodyPart(bodyParts[currentIndex - 1])
+    if (direction === "next" && currentIndex < bodyParts.length - 1) setCurrentBodyPart(bodyParts[currentIndex + 1])
   }
 
-  const handleBeginAnalysis = () => {
-    router.push("/analysis")
+  // --- Updated: Send images to backend & save results in sessionStorage ---
+  const handleBeginAnalysis = async () => {
+    const formData = new FormData()
+    Object.values(uploadedFiles).flat().forEach(file => formData.append("files", file))
+
+    try {
+      const response = await axios.post("http://127.0.0.1:8000/predict", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      const results = response.data
+      console.log("AI Analysis Results:", results)
+
+      // --- Save results in sessionStorage for Results page ---
+      sessionStorage.setItem("ai_results", JSON.stringify(results))
+      router.push("/results")
+
+    } catch (err) {
+      console.error("AI analysis failed:", err)
+      alert("Failed to analyze images. Make sure the AI backend is running at http://127.0.0.1:8000.")
+    }
   }
 
   const currentFiles = uploadedFiles[currentBodyPart]
@@ -117,33 +112,12 @@ export default function HealthAnalyzer() {
                 <Upload className="h-16 w-16 text-teal-500 mx-auto mb-6" />
                 <p className="text-slate-600 mb-6 text-lg">Upload {bodyPartLabels[currentBodyPart]} photo</p>
                 <div className="flex gap-4 justify-center">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    id="file-upload"
-                    multiple
-                  />
-                  <label
-                    htmlFor="file-upload"
-                    className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 text-lg rounded-xl cursor-pointer inline-block transition-colors"
-                  >
+                  <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" id="file-upload" multiple />
+                  <label htmlFor="file-upload" className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 text-lg rounded-xl cursor-pointer inline-block transition-colors">
                     Choose Files
                   </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handleCameraCapture}
-                    className="hidden"
-                    id="camera-capture"
-                    ref={cameraInputRef}
-                  />
-                  <label
-                    htmlFor="camera-capture"
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 text-lg rounded-xl cursor-pointer inline-flex items-center gap-2 transition-colors"
-                  >
+                  <input type="file" accept="image/*" capture="environment" onChange={handleCameraCapture} className="hidden" id="camera-capture" ref={cameraInputRef} />
+                  <label htmlFor="camera-capture" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 text-lg rounded-xl cursor-pointer inline-flex items-center gap-2 transition-colors">
                     <Camera className="h-5 w-5" />
                     Take Photo
                   </label>
@@ -151,18 +125,11 @@ export default function HealthAnalyzer() {
               </div>
               {currentFiles.length > 0 && (
                 <div className="space-y-3">
-                  <p className="text-sm text-slate-500 mb-2">
-                    {currentFiles.length} file(s) for {bodyPartLabels[currentBodyPart]}
-                  </p>
+                  <p className="text-sm text-slate-500 mb-2">{currentFiles.length} file(s) for {bodyPartLabels[currentBodyPart]}</p>
                   {currentFiles.map((file, index) => (
                     <div key={index} className="flex items-center justify-between bg-slate-50 p-3 rounded-xl">
                       <span className="text-base text-slate-600 truncate">{file.name}</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeFile(currentBodyPart, index)}
-                        className="text-red-500 hover:text-red-700 rounded-full"
-                      >
+                      <Button variant="ghost" size="sm" onClick={() => removeFile(currentBodyPart, index)} className="text-red-500 hover:text-red-700 rounded-full">
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
@@ -172,39 +139,21 @@ export default function HealthAnalyzer() {
             </div>
           </Card>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigateBodyPart("next")}
-            disabled={bodyParts.indexOf(currentBodyPart) === bodyParts.length - 1}
-            className="rounded-full w-32 h-32"
-          >
+          <Button variant="ghost" size="icon" onClick={() => navigateBodyPart("next")} disabled={bodyParts.indexOf(currentBodyPart) === bodyParts.length - 1} className="rounded-full w-32 h-32">
             <ChevronRight className="h-20 w-20" />
           </Button>
         </div>
 
         <div className="flex justify-center gap-6 mb-12">
           {bodyParts.map((part) => (
-            <Card
-              key={part}
-              className={`p-6 rounded-2xl transition-all cursor-pointer ${
-                currentBodyPart === part ? "bg-teal-100 border-teal-300 shadow-md" : "bg-white hover:bg-slate-50"
-              }`}
-              onClick={() => setCurrentBodyPart(part)}
-            >
+            <Card key={part} className={`p-6 rounded-2xl transition-all cursor-pointer ${currentBodyPart === part ? "bg-teal-100 border-teal-300 shadow-md" : "bg-white hover:bg-slate-50"}`} onClick={() => setCurrentBodyPart(part)}>
               <div className="flex items-center gap-3">
-                <div
-                  className={`w-8 h-8 rounded-full border-2 flex items-center justify-center ${
-                    completedParts.has(part) ? "bg-teal-600 border-teal-600" : "border-slate-300"
-                  }`}
-                >
+                <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center ${completedParts.has(part) ? "bg-teal-600 border-teal-600" : "border-slate-300"}`}>
                   {completedParts.has(part) && <Check className="h-5 w-5 text-white" />}
                 </div>
                 <span className="text-slate-700 font-medium text-lg">{bodyPartLabels[part]}</span>
                 {uploadedFiles[part].length > 0 && (
-                  <span className="text-xs bg-teal-100 text-teal-700 px-2 py-1 rounded-full">
-                    {uploadedFiles[part].length}
-                  </span>
+                  <span className="text-xs bg-teal-100 text-teal-700 px-2 py-1 rounded-full">{uploadedFiles[part].length}</span>
                 )}
               </div>
             </Card>

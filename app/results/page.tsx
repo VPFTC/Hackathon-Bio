@@ -5,26 +5,52 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { useRouter } from "next/navigation"
 import { AlertTriangle, CheckCircle, Home } from "lucide-react"
+import React from "react"
 
 export default function ResultsPage() {
   const router = useRouter()
+  const [results, setResults] = React.useState<any>(null)
 
-  // Placeholder data - will be replaced with AI results
-  const reliabilityPercentage = 87
-  const hasDeficiencies = true
+  React.useEffect(() => {
+    const stored = sessionStorage.getItem("ai_results")
+    if (stored) {
+      try {
+        setResults(JSON.parse(stored))
+      } catch (err) {
+        console.error("Failed to parse stored results:", err)
+      }
+    }
+  }, [])
 
   const handleStartOver = () => {
+    sessionStorage.removeItem("ai_results") // clear results
     router.push("/")
   }
+
+  if (!results) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <p className="text-slate-600 text-lg">
+          No analysis results found. Please upload images to analyze.
+        </p>
+      </div>
+    )
+  }
+
+  const best = results.best
+  const allResults = results.results
+  const reliabilityPercentage = Math.round(best.confidence_adjusted)
+  const hasDeficiencies = allResults.some((r: any) => r.index !== 0) // assuming index 0 = "healthy"
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-200 to-white p-6">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold text-slate-700 text-center mb-8 font-sans">Analysis Results</h1>
+        <h1 className="text-3xl font-bold text-slate-700 text-center mb-8 font-sans">
+          Analysis Results
+        </h1>
 
-        {/* Top Section - Problem Summary and Reliability */}
+        {/* Top Section */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
-          {/* Problem Summary Box */}
           <Card className="p-6 rounded-2xl shadow-lg">
             <div className="flex items-start gap-3 mb-4">
               {hasDeficiencies ? (
@@ -33,16 +59,18 @@ export default function ResultsPage() {
                 <CheckCircle className="h-6 w-6 text-green-600 mt-1 flex-shrink-0" />
               )}
               <div>
-                <h2 className="text-xl font-semibold text-slate-700 mb-2">Potential Issues Detected</h2>
+                <h2 className="text-xl font-semibold text-slate-700 mb-2">
+                  Potential Issues Detected
+                </h2>
                 <p className="text-slate-600 leading-relaxed">
-                  Based on your photos, our AI has identified potential signs of vitamin D deficiency and iron
-                  deficiency. These findings suggest you may benefit from dietary adjustments or supplements.
+                  {hasDeficiencies
+                    ? "Based on your photos, our AI has detected potential deficiencies or issues. See details below."
+                    : "No significant deficiencies detected. Your photos appear healthy based on AI analysis."}
                 </p>
               </div>
             </div>
           </Card>
 
-          {/* Reliability Percentage Box */}
           <Card className="p-6 rounded-2xl shadow-lg">
             <h2 className="text-xl font-semibold text-slate-700 mb-4">Reliability Score</h2>
             <div className="space-y-4">
@@ -52,52 +80,23 @@ export default function ResultsPage() {
               </div>
               <Progress value={reliabilityPercentage} className="h-3 rounded-full" />
               <p className="text-sm text-slate-500">
-                This score reflects how confident our AI is in the analysis based on image quality and visible
-                indicators.
+                This score reflects how confident our AI is in the analysis based on image quality and visible indicators.
               </p>
             </div>
           </Card>
         </div>
 
-        {/* Bottom Section - Detailed Description */}
+        {/* Detailed Results */}
         <Card className="p-8 rounded-2xl shadow-lg mb-8">
           <h2 className="text-2xl font-semibold text-slate-700 mb-6">Detailed Analysis</h2>
           <div className="space-y-6 text-slate-600 leading-relaxed">
-            <div>
-              <h3 className="text-lg font-medium text-slate-700 mb-2">Vitamin D Deficiency Indicators</h3>
-              <p>
-                Your skin analysis shows signs of dullness and potential texture changes that may indicate vitamin D
-                deficiency. The nail examination revealed possible brittleness and slow growth patterns. Consider
-                increasing sun exposure or discussing vitamin D supplementation with your healthcare provider.
-              </p>
-            </div>
-
-            <div>
-              <h3 className="text-lg font-medium text-slate-700 mb-2">Iron Deficiency Signs</h3>
-              <p>
-                The analysis of your nail beds and overall skin tone suggests potential iron deficiency. Pale nail beds
-                and subtle changes in skin coloration were detected. Iron-rich foods like leafy greens, lean meats, and
-                legumes may help address this deficiency.
-              </p>
-            </div>
-
-            <div>
-              <h3 className="text-lg font-medium text-slate-700 mb-2">Recommendations</h3>
-              <ul className="list-disc list-inside space-y-2 ml-4">
-                <li>Consult with a healthcare professional for proper testing and diagnosis</li>
-                <li>Consider a balanced diet rich in vitamins and minerals</li>
-                <li>Monitor symptoms and track any changes over time</li>
-                <li>Follow up with another screening in 4-6 weeks</li>
-              </ul>
-            </div>
-
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mt-6">
-              <p className="text-amber-800 text-sm">
-                <strong>Disclaimer:</strong> This analysis is for informational purposes only and should not replace
-                professional medical advice. Always consult with a qualified healthcare provider for proper diagnosis
-                and treatment recommendations.
-              </p>
-            </div>
+            {allResults.map((res: any) => (
+              <div key={res.filename}>
+                <h3 className="text-lg font-medium text-slate-700 mb-2">{res.filename}</h3>
+                <p>Prediction: {res.class}</p>
+                <p>Confidence: {res.confidence_adjusted}%</p>
+              </div>
+            ))}
           </div>
         </Card>
 
